@@ -1,3 +1,13 @@
+##########################
+#
+# NETWORKING
+#
+##########################
+
+##############################
+# Create a VPC 
+##############################
+
 resource "aws_vpc" "networking_lab_vpc" {
   cidr_block = "10.0.0.0/16" 
   enable_dns_support = "true"
@@ -9,15 +19,9 @@ resource "aws_vpc" "networking_lab_vpc" {
   }
 }
 
-resource "aws_subnet" "my_private_subnet" {
-  vpc_id = aws_vpc.networking_lab_vpc.id 
-  cidr_block = "10.0.1.0/24"
-  availability_zone = "us-east-1a"
-
-  tags = {
-    Name = "my-private-subnet"
-  }
-}
+##############################
+# Create a public subnet for the webservers  
+##############################
 
 resource "aws_subnet" "my_public_subnet" {
   vpc_id = aws_vpc.networking_lab_vpc.id 
@@ -30,25 +34,51 @@ resource "aws_subnet" "my_public_subnet" {
   }
 }   
 
-resource "aws_subnet" "my_second_public_subnet" {
-  vpc_id = aws_vpc.networking_lab_vpc.id
-  cidr_block = "10.0.3.0/24"
-  availability_zone = "us-east-1b"
-  map_public_ip_on_launch = "true"
+##############################
+# Create two private subnets
+#
+# note - two private subnets are required in order to provide the RDS with a subnet group later. 
+# Multi AZ / subnets support high availability, so this is built in as a requirement to ensure the option is there later.
+##############################
+
+resource "aws_subnet" "private_subnet_1" {
+  vpc_id = aws_vpc.networking_lab_vpc.id 
+  cidr_block = "10.0.1.0/24"
+  availability_zone = "us-east-1a"
 
   tags = {
-    Name = "my-second-public-subnet"
+    Name = "private-subnet_1"
   }
 }
 
+resource "aws_subnet" "private_subnet_2" {
+  vpc_id = aws_vpc.networking_lab_vpc.id
+  cidr_block = "10.0.2.0/24"
+  availability_zone = "us-east-1b"
+
+  tags = {
+    Name = "private_subnet_2"
+  }
+}
+
+##############################
+# Create a subnet group 
+# Use: to link private subnets to RDS later 
+##############################
+
 resource "aws_db_subnet_group" "rds_subnet_group" {
   name = "rds_subnet_group"
-  subnet_ids = [ aws_subnet.my_public_subnet.id, aws_subnet.my_second_public_subnet.id ]
+  subnet_ids = [ aws_subnet.private_subnet_1.id, aws_subnet.private_subnet_2.id ]
 
   tags = {
     Name = "rds_subnet_group"
   }
 }
+
+##############################
+# Create an internet gateway
+# Use: connect VPC to the internet  
+##############################
 
 resource "aws_internet_gateway" "my_internet_gateway" {
   vpc_id = aws_vpc.networking_lab_vpc.id 
@@ -57,6 +87,10 @@ resource "aws_internet_gateway" "my_internet_gateway" {
     Name = "networking-lab-internet-gateway"
   }
 }
+
+##############################
+# Create a route table 
+##############################
 
 resource "aws_route_table" "networking-lab-route-table" {
   vpc_id = aws_vpc.networking_lab_vpc.id 
@@ -72,9 +106,8 @@ resource "aws_route_table" "networking-lab-route-table" {
 }
 
 ###########################
-#
-# Resources to connect first public subnet to the internet 
-#
+# Associate route table with public subnet
+# Use: allows traffic to and from the internet into subnet  
 ###########################
 
 resource "aws_route_table_association" "public_subnet_to_route_table_association" {
@@ -82,26 +115,27 @@ resource "aws_route_table_association" "public_subnet_to_route_table_association
   route_table_id = aws_route_table.networking-lab-route-table.id 
 }
 
-###########################
+##########################
 #
-# Resources to connect second public subnet to the internet 
+# SECURITY GROUPS 
 #
-###########################
+##########################
 
-resource "aws_route_table_association" "second_public_subnet_to_route_table_association" {
-  subnet_id = aws_subnet.my_second_public_subnet.id 
-  route_table_id = aws_route_table.networking-lab-route-table.id 
-}
-
-###########################
-###########################
-
+##########################
+# Create security group for backend database
+# Note - no ingress or egress rules are given because these a cycle referential to the webserver security group that hasn't been created yet. 
+# Rules will be implemented later via aws_security_group_rule resource
+##########################
 
 resource "aws_security_group" "rds_sc" {
   name = "rds_sc"
   description = "Security group to store RDS instance."
   vpc_id = aws_vpc.networking_lab_vpc.id 
 }
+
+##############################
+# Create webserver security group with inbound and outbound rules 
+##############################
 
 resource "aws_security_group" "webserver_sc" {
   name = "webserver_sc"
@@ -176,14 +210,22 @@ resource "aws_security_group" "webserver_sc" {
   ######
 }
 
+##############################
+# Implement inbound rule onto database security group to allow SQL requests 
+##############################
+
 resource "aws_security_group_rule" "inbound_sql_rule" {
   type = "ingress"
-  from_port = 3306
+  from_port = 3306 # port number for MySQL 
   to_port = 3306
   protocol = "tcp"
   source_security_group_id = aws_security_group.webserver_sc.id
   security_group_id = aws_security_group.rds_sc.id
 }
+
+##############################
+# Create an RDS instance 
+##############################
 
 resource "aws_db_instance" "my_wordpress_db" {
   allocated_storage = 10
@@ -202,6 +244,11 @@ resource "aws_db_instance" "my_wordpress_db" {
     Name = "mywordpressdb"
   }
 }
+
+##############################
+# Create x2 EC2 instances 
+# note - two instances have been created to allow for load balancing later 
+##############################
 
 resource "aws_instance" "my_public_instance" {
   ami = "ami-09d3b3274b6c5d4aa"

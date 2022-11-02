@@ -1,0 +1,6 @@
+venv/ 
+providers.tf 
+.terraform 
+*.tfstate 
+*.backup
+*.hcl

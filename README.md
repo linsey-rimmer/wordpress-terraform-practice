@@ -15,8 +15,8 @@ If you wish to destroy all resources created with the script, run the ```terrafo
 
 ## Features
 * Unique VPC with an internet gateway 
-* One public subnet connected to the internet gateway and one private back end subnet <del>connected one way to the internet through a NAT gateway</del> TODO
+* One public subnet connected to the internet gateway and one private back end subnet 
 * Web server security group with SSH, HTTP, HTTPS, and SQL rules
 * Database security group with SQL communication rules  
-* <del>Backend RDS stored in private subnet</del> TODO
-* <del>Public subnet containing x2 EC2 instances for load balancing a wordpress blog</del> TODO
+* Backend RDS stored in private subnet
+* Public subnet containing x2 EC2 instances for load balancing a wordpress blog

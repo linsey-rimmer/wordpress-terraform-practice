@@ -25,7 +25,7 @@ resource "aws_vpc" "networking_lab_vpc" {
 
 resource "aws_subnet" "my_public_subnet" {
   vpc_id = aws_vpc.networking_lab_vpc.id 
-  cidr_block = "10.0.2.0/24"
+  cidr_block = "10.0.1.0/24"
   availability_zone = "us-east-1a"
   map_public_ip_on_launch = "true"
 
@@ -43,7 +43,7 @@ resource "aws_subnet" "my_public_subnet" {
 
 resource "aws_subnet" "private_subnet_1" {
   vpc_id = aws_vpc.networking_lab_vpc.id 
-  cidr_block = "10.0.1.0/24"
+  cidr_block = "10.0.2.0/24"
   availability_zone = "us-east-1a"
 
   tags = {
@@ -53,7 +53,7 @@ resource "aws_subnet" "private_subnet_1" {
 
 resource "aws_subnet" "private_subnet_2" {
   vpc_id = aws_vpc.networking_lab_vpc.id
-  cidr_block = "10.0.2.0/24"
+  cidr_block = "10.0.3.0/24"
   availability_zone = "us-east-1b"
 
   tags = {
@@ -246,32 +246,70 @@ resource "aws_db_instance" "my_wordpress_db" {
 }
 
 ##############################
+# Bring in user data
+##############################
+
+data "template_file" "wordpress_install_user_data" {
+  template = file("wordpress_user_data.txt")
+}
+
+data "template_cloudinit_config" "config" {
+  gzip = "false"
+  base64_encode = "false"
+
+  part {
+    content_type = "text/x-shellscript"
+    content = <<-EOF
+      #!/bin/bash
+      yum -y install httpd php php-mysql
+      wget https://wordpress.org/wordpress-5.1.1.tar.gz
+      tar -xzf wordpress-5.1.1.tar.gz
+      cp -r wordpress/* /var/www/html
+      rm -rf wordpress*
+      cd /var/www/html
+      chmod -R 755 wp-content
+      chown -R apache:apache wp-content
+      systemctl enable httpd && systemctl start httpd 
+    EOF
+  }
+}
+
+##############################
 # Create x2 EC2 instances 
 # note - two instances have been created to allow for load balancing later 
 ##############################
 
-resource "aws_instance" "my_public_instance" {
+resource "aws_instance" "wordpress_instance_1" {
   ami = "ami-09d3b3274b6c5d4aa"
   instance_type = "t2.micro"
   subnet_id = aws_subnet.my_public_subnet.id 
   vpc_security_group_ids = [ aws_security_group.webserver_sc.id ]
   key_name = "vockey"
+  # user_data = "${file("wordpress_user_data.txt")}" - execution doesn't work because we need to be able to reference attributes generated from preceding script 
+  user_data = data.template_cloudinit_config.config.rendered 
 
   tags = {
-    Name = "my_public_instance"
+    Name = "wordpress_instance_1"
   }
+
+  depends_on = [
+    aws_db_instance.my_wordpress_db
+  ]
 }
 
-resource "aws_instance" "my_private_instance" {
+resource "aws_instance" "wordpress_instance_2" {
   ami = "ami-09d3b3274b6c5d4aa"
   instance_type = "t2.micro"
-  subnet_id = aws_subnet.my_private_subnet.id 
+  subnet_id = aws_subnet.my_public_subnet.id 
   vpc_security_group_ids = [ aws_security_group.webserver_sc.id ]
   key_name = "vockey"
+  user_data = data.template_cloudinit_config.config.rendered 
 
   tags = {
-    Name = "my_private_instance"
+    Name = "wordpress_instance_2"
   }
-}
 
-## Need to create security group that allows for SSH access 
+  depends_on = [
+    aws_db_instance.my_wordpress_db
+  ]
+}

@@ -250,35 +250,40 @@ resource "aws_db_instance" "my_wordpress_db" {
 ##############################
 
 data "template_file" "wordpress_install_user_data" {
-  template = file("wordpress_user_data.txt")
-}
-
-data "template_cloudinit_config" "config" {
-  gzip = "false"
-  base64_encode = "false"
-
-  part {
-    content_type = "text/x-shellscript"
-    content = <<-EOF
-      #!/bin/bash
-      db_RDS=${db_RDS}
-      yum -y install httpd php php-mysql
-      wget https://wordpress.org/wordpress-5.1.1.tar.gz
-      tar -xzf wordpress-5.1.1.tar.gz
-      cp -r wordpress/* /var/www/html
-      rm -rf wordpress*
-      cd /var/www/html
-      sudo cp wp-config-sample.php wp-config.php
-      sed -i 's/database_name_here/mywordpressdb/' wp-config.php
-      sed -i 's/username_here/admin/g' wp-config.php
-      sed -i 's/password_here/password/g' wp-config.php
-      sed -i 's/localhost/${aws_db_instance.my_wordpress_db.address}/' wp-config.php
-      chmod -R 755 wp-content
-      chown -R apache:apache wp-content
-      systemctl enable httpd && systemctl start httpd 
-    EOF
+  template = file("wordpress_user_data.tpl")
+  vars = {
+    db_username = "admin"
+    db_user_password = "password"
+    db_name = "mywordpressdb"
+    db_RDS = aws_db_instance.my_wordpress_db.endpoint 
   }
 }
+
+# data "template_cloudinit_config" "config" {
+#   gzip = "false"
+#   base64_encode = "false"
+
+#   part {
+#     content_type = "text/x-shellscript"
+#     content = <<-EOF
+#       #!/bin/bash
+#       yum -y install httpd php php-mysql
+#       wget https://wordpress.org/wordpress-5.1.1.tar.gz
+#       tar -xzf wordpress-5.1.1.tar.gz
+#       cp -r wordpress/* /var/www/html
+#       rm -rf wordpress*
+#       cd /var/www/html
+#       sudo cp wp-config-sample.php wp-config.php
+#       sed -i 's/database_name_here/mywordpressdb/' wp-config.php
+#       sed -i 's/username_here/admin/g' wp-config.php
+#       sed -i 's/password_here/password/g' wp-config.php
+#       sed -i 's/localhost/${aws_db_instance.my_wordpress_db.address}/' wp-config.php
+#       chmod -R 755 wp-content
+#       chown -R apache:apache wp-content
+#       systemctl enable httpd && systemctl start httpd 
+#     EOF
+#   }
+# }
 
 ##############################
 # Create x2 EC2 instances 
@@ -292,7 +297,8 @@ resource "aws_instance" "wordpress_instance_1" {
   vpc_security_group_ids = [ aws_security_group.webserver_sc.id ]
   key_name = "vockey"
   # user_data = "${file("wordpress_user_data.txt")}" - execution doesn't work because we need to be able to reference attributes generated from preceding script 
-  user_data = data.template_cloudinit_config.config.rendered 
+  # user_data = data.template_cloudinit_config.config.rendered 
+  user_data = data.template_file.wordpress_install_user_data.rendered 
 
   tags = {
     Name = "wordpress_instance_1"
@@ -309,7 +315,8 @@ resource "aws_instance" "wordpress_instance_2" {
   subnet_id = aws_subnet.my_public_subnet.id 
   vpc_security_group_ids = [ aws_security_group.webserver_sc.id ]
   key_name = "vockey"
-  user_data = data.template_cloudinit_config.config.rendered 
+  user_data = data.template_file.wordpress_install_user_data.rendered 
+  # user_data = data.template_cloudinit_config.config.rendered 
 
   tags = {
     Name = "wordpress_instance_2"

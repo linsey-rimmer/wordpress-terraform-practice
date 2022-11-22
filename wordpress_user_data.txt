@@ -8,8 +8,8 @@ cd /var/www/html
 chmod -R 755 wp-content
 chown -R apache:apache wp-content
 systemctl enable httpd && systemctl start httpd 
-sudo cp wp-config-sample.php wp-config.php
-sudo sed -i "s/database_name_here/mywordpressdb/" wp-config.php
-sudo sed -i "s/username_here/admin/g" wp-config.php
-sudo sed -i "s/password_here/password/g" wp-config.php
-sudo sed -i "s/localhost/<data-base-host-name>" wp-config.php
+cp wp-config-sample.php wp-config.php
+sed -i "s/database_name_here/mywordpressdb/" wp-config.php
+sed -i "s/username_here/admin/g" wp-config.php
+sed -i "s/password_here/password/g" wp-config.php
+sed -i "s/localhost/<data-base-host-name>" wp-config.php
